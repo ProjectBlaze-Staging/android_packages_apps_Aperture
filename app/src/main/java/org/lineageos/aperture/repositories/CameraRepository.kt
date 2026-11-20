@@ -127,6 +127,9 @@ class CameraRepository(
                 val capabilities = camera2CameraInfo.getCameraCharacteristic(
                     CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES
                 ) ?: IntArray(0)
+                val isBackwardCompatible = capabilities.contains(
+                    CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_BACKWARD_COMPATIBLE
+                )
                 val isLogicalCamera = physicalCameraInfos.size > 1 ||
                         capabilities.contains(
                             CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_LOGICAL_MULTI_CAMERA
@@ -136,6 +139,7 @@ class CameraRepository(
                 val isDuplicateMainZoomAux = intrinsicZoomRatio in 0.85f..1.35f
 
                 overlaysRepository.enableAuxCameras
+                        && isBackwardCompatible
                         && !isIgnoredAuxCamera
                         && !isIgnoredLogicalCamera
                         && !isDuplicateMainZoomAux

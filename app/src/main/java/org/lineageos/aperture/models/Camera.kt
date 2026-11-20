@@ -90,9 +90,40 @@ class Camera private constructor(
         }
     }
 
-    private val supportedVideoFrameRates = cameraInfo.supportedFrameRateRanges.mapNotNull {
+    private val nativeFrameRateRanges = cameraInfo.supportedFrameRateRanges
+
+    fun supportsNativeFrameRate(frameRate: FrameRate): Boolean =
+        nativeFrameRateRanges.any { it.lower == frameRate.value && it.upper == frameRate.value }
+
+    private val supportedVideoFrameRates = nativeFrameRateRanges.mapNotNull {
         FrameRate.fromRange(it.toClosedRange())
     }.toSet()
+
+    private val streamConfigurationMap = runCatching {
+        camera2CameraInfo.getCameraCharacteristic(
+            CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP
+        )
+    }.getOrNull()
+
+    private fun supports60FpsForQuality(quality: Quality): Boolean {
+        if (nativeFrameRateRanges.any { it.upper >= 60 }) return true
+        val map = streamConfigurationMap ?: return false
+        val targetSize = when (quality) {
+            Quality.SD -> android.util.Size(720, 480)
+            Quality.HD -> android.util.Size(1280, 720)
+            Quality.FHD -> android.util.Size(1920, 1080)
+            Quality.UHD -> android.util.Size(3840, 2160)
+            else -> return false
+        }
+        val privMinNs = runCatching {
+            map.getOutputMinFrameDuration(android.graphics.ImageFormat.PRIVATE, targetSize)
+        }.getOrDefault(0L)
+        if (privMinNs in 1L..20_000_000L) return true
+        val recMinNs = runCatching {
+            map.getOutputMinFrameDuration(android.media.MediaRecorder::class.java, targetSize)
+        }.getOrDefault(0L)
+        return recMinNs in 1L..20_000_000L
+    }
 
     private val videoCapabilities = Recorder.getVideoCapabilities(cameraInfo)
 
@@ -109,6 +140,9 @@ class Camera private constructor(
             VideoQualityInfo(
                 it,
                 supportedVideoFrameRates.toMutableSet().apply {
+                    if (supports60FpsForQuality(it)) {
+                        add(FrameRate.FPS_60)
+                    }
                     additionalVideoFrameRates[it].orEmpty().forEach { (frameRate, remove) ->
                         if (remove) {
                             remove(frameRate)

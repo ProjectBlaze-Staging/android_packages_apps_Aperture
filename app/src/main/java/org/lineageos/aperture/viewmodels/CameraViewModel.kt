@@ -1166,6 +1166,19 @@ class CameraViewModel(application: Application) : ApertureViewModel(application)
         )
     }
 
+    fun fallbackToMainCameraIfAux(): Boolean {
+        val currentCamera = _cameraConfiguration.value?.camera ?: return false
+        val mainCamera = when (currentCamera.cameraFacing) {
+            CameraFacing.FRONT -> cameraRepository.mainFrontCamera ?: cameraRepository.mainBackCamera
+            else -> cameraRepository.mainBackCamera ?: cameraRepository.mainFrontCamera
+        } ?: return false
+        if (currentCamera == mainCamera) {
+            return false
+        }
+        selectCamera(mainCamera)
+        return true
+    }
+
     fun takePhoto() {
         // Bail out if a photo is already being taken
         if (cameraState.value == CameraState.TAKING_PHOTO) {

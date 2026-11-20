@@ -835,9 +835,10 @@ open class CameraActivity : AppCompatActivity(R.layout.activity_camera) {
                         }
 
                         CameraXCameraState.ERROR_STREAM_CONFIG -> {
-                            // CameraX use case misconfiguration, no way to recover
                             showToast(R.string.error_stream_config)
-                            finish()
+                            if (!tryFallbackToMainCamera()) {
+                                finish()
+                            }
                         }
 
                         CameraXCameraState.ERROR_CAMERA_DISABLED -> {
@@ -847,9 +848,10 @@ open class CameraActivity : AppCompatActivity(R.layout.activity_camera) {
                         }
 
                         CameraXCameraState.ERROR_CAMERA_FATAL_ERROR -> {
-                            // No way to fix it without user action, bail out
                             showToast(R.string.error_camera_fatal_error)
-                            finish()
+                            if (!tryFallbackToMainCamera()) {
+                                finish()
+                            }
                         }
 
                         CameraXCameraState.ERROR_DO_NOT_DISTURB_MODE_ENABLED -> {
@@ -868,7 +870,9 @@ open class CameraActivity : AppCompatActivity(R.layout.activity_camera) {
 
                                 CameraXCameraState.ErrorType.CRITICAL -> {
                                     showToast(R.string.error_unknown_critical)
-                                    finish()
+                                    if (!tryFallbackToMainCamera()) {
+                                        finish()
+                                    }
                                 }
 
                                 null -> {
@@ -1754,6 +1758,19 @@ open class CameraActivity : AppCompatActivity(R.layout.activity_camera) {
                 viewModel.cameraController.videoCaptureQualitySelector =
                     QualitySelector.from(cameraConfiguration.videoQuality)
 
+                // Set target frame rate on StreamSpec only when natively advertised in AE ranges;
+                // otherwise leave StreamSpec unspecified so CameraX never rejects 4K@60fps while
+                // Camera2CameraControl enforces CONTROL_AE_TARGET_FPS_RANGE = [60, 60].
+                val requestedFps = cameraConfiguration.videoFrameRate
+                viewModel.cameraController.videoCaptureTargetFrameRate =
+                    if (requestedFps != null &&
+                        cameraConfiguration.camera.supportsNativeFrameRate(requestedFps)
+                    ) {
+                        android.util.Range(requestedFps.value, requestedFps.value)
+                    } else {
+                        android.util.Range(0, 0)
+                    }
+
                 // Set the dynamic range
                 viewModel.cameraController.videoCaptureDynamicRange =
                     cameraConfiguration.videoDynamicRange.dynamicRange
@@ -2263,6 +2280,8 @@ open class CameraActivity : AppCompatActivity(R.layout.activity_camera) {
             }
         }
     }
+
+    private fun tryFallbackToMainCamera(): Boolean = viewModel.fallbackToMainCameraIfAux()
 
     companion object {
         private val LOG_TAG = CameraActivity::class.simpleName!!
